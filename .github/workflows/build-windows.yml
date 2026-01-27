@@ -31,16 +31,17 @@ jobs:
     - name: List dist contents
       run: |
         dir dist
+        dir "dist\XUE风险穿透终端"
     
-    - name: Rename exe for upload
+    - name: Create ZIP archive
       run: |
-        move "dist\XUE风险穿透终端.exe" "dist\XUE-Risk-Terminal.exe"
-      shell: cmd
+        Compress-Archive -Path "dist\XUE风险穿透终端" -DestinationPath "dist\XUE风险穿透终端-Windows.zip"
+      shell: pwsh
     
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
-        name: XUE-Risk-Terminal-Windows
-        path: dist/XUE-Risk-Terminal.exe
+        name: XUE风险穿透终端-Windows
+        path: dist/XUE风险穿透终端-Windows.zip
         if-no-files-found: warn
         retention-days: 30
