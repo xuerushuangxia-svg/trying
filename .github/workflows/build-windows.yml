@@ -35,7 +35,7 @@ jobs:
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
-        name: XUE风险穿透终端-Windows
+        name: XUE-Risk-Terminal-Windows
         path: dist/XUE风险穿透终端.exe
         if-no-files-found: warn
         retention-days: 30
