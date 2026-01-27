@@ -23,36 +23,22 @@ def render_sidebar() -> str:
     # 加载股票索引
     index_df = data_service.load_full_index()
     
-    # 搜索输入
-    query = st.sidebar.text_input(
-        "输入代码或名称搜索（回车即筛选）", 
-        value=settings.default_stock_code
-    )
-    
-    # 搜索结果
-    results = data_service.search_stocks(query, limit=settings.search_limit) if index_df is not None else None
-    
-    if results is not None and not results.empty:
-        options = results['label'].tolist()
-        # 尝试找到精确匹配项
-        default_idx = 0
-        try:
-            default_idx = next(
-                i for i, lab in enumerate(options) 
-                if lab.lower().startswith(query.lower())
-            )
-        except StopIteration:
-            default_idx = 0
+    if index_df is not None and not index_df.empty:
+        # 构建选项列表
+        all_options = index_df['label'].tolist()
         
+        # 单一搜索框：支持搜索和选择
         selected = st.sidebar.selectbox(
-            "搜索/联想 A 股代码或名称", 
-            options, 
-            index=default_idx
+            "🔍 输入股票代码或名称搜索",
+            options=all_options,
+            index=0,
+            placeholder="输入代码或名称...",
         )
-        target_code = selected.split(" | ")[0]
+        target_code = selected.split(" | ")[0] if selected else settings.default_stock_code
     else:
+        # 备用：手动输入
         target_code = st.sidebar.text_input(
-            "未找到候选，请手动输入代码", 
+            "输入股票代码", 
             value=settings.default_stock_code
         )
     

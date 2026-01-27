@@ -34,17 +34,54 @@ class DataService:
         return pd.DataFrame()
     
     def _fetch_from_eastmoney(self) -> Optional[pd.DataFrame]:
-        """从东方财富获取股票列表"""
-        url = f"{settings.api.eastmoney_stock_list_url}?pn=1&pz=6000&po=1&np=1&fields=f12,f14,f100&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
-        try:
-            r = requests.get(url, timeout=settings.api.request_timeout)
-            if r.status_code == 200:
-                data = r.json().get('data', {}).get('diff', [])
-                df = pd.DataFrame(data)
-                if not df.empty:
-                    return self._normalize_index_df(df)
-        except Exception:
-            pass
+        """从东方财富获取股票列表（使用 datacenter API，只获取 A 股最新数据）"""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Referer': 'https://data.eastmoney.com/'
+        }
+        
+        all_data = []
+        page = 1
+        max_pages = 15  # 最多请求15页，约7500条，足够覆盖所有A股
+        
+        # 使用 datacenter-web API，筛选 A 股（SECURITY_TYPE_CODE=058001001）+ 最新数据（ISNEW=1）
+        while page <= max_pages:
+            url = f'https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_LICO_FN_CPD&columns=SECURITY_CODE,SECURITY_NAME_ABBR&filter=(ISNEW="1")(SECURITY_TYPE_CODE="058001001")&pageSize=500&pageNumber={page}&sortColumns=SECURITY_CODE&sortTypes=1'
+            try:
+                r = requests.get(url, timeout=15, headers=headers)
+                if r.status_code == 200:
+                    result = r.json().get('result', {})
+                    data = result.get('data', [])
+                    if not data:
+                        break
+                    all_data.extend(data)
+                    # 检查是否还有更多页
+                    total = result.get('count', 0)
+                    if len(all_data) >= total:
+                        break
+                    page += 1
+                else:
+                    break
+            except Exception as e:
+                print(f"API请求失败: {e}")
+                break
+        
+        if all_data:
+            df = pd.DataFrame(all_data)
+            # 转换列名
+            df = df.rename(columns={
+                'SECURITY_CODE': 'symbol',
+                'SECURITY_NAME_ABBR': 'name',
+                'TRADE_MARKET_CODE': 'market'
+            })
+            df['industry'] = ''
+            df['symbol'] = df['symbol'].astype(str).str.strip()
+            df['name'] = df['name'].astype(str).str.strip()
+            df['label'] = df['symbol'] + " | " + df['name']
+            df['name_lower'] = df['name'].str.lower()
+            df['search'] = df['symbol'].str.lower() + " " + df['name_lower']
+            return df[['symbol', 'name', 'industry', 'label', 'name_lower', 'search']]
+        
         return None
     
     def _normalize_index_df(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -115,25 +152,53 @@ class DataService:
         return pd.DataFrame()
     
     def fetch_risk_data(self, code: str) -> Tuple[Optional[Dict], Optional[List]]:
-        """获取风险相关数据"""
-        m_id = "1." + code if code.startswith("6") else "0." + code
+        """获取风险相关数据（使用 datacenter-web API）"""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Referer': 'https://data.eastmoney.com/'
+        }
+        snap = {}
+        anns = []
+        
         try:
-            # 财务/基本面快照
-            r1 = requests.get(
-                f"{settings.api.eastmoney_stock_detail_url}?secid={m_id}&fields=f58,f43,f170,f167,f116,f127,f186,f114,f115,f117",
-                timeout=settings.api.request_timeout
-            )
-            snap = r1.json().get('data', {}) if r1.status_code == 200 else {}
+            # 使用 datacenter-web API 获取财务/基本面快照
+            url = f'https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_LICO_FN_CPD&columns=ALL&filter=(SECURITY_CODE="{code}")&pageSize=1'
+            r1 = requests.get(url, timeout=settings.api.request_timeout, headers=headers)
             
-            # 公告扫描
-            r2 = requests.get(
-                f"{settings.api.eastmoney_announcement_url}?sr=-1&page_size={settings.announcement_limit}&page_index=1&stock_list={code}",
-                timeout=settings.api.request_timeout
-            )
-            anns = r2.json().get('data', {}).get('list', []) if r2.status_code == 200 else []
+            if r1.status_code == 200:
+                data = r1.json().get('result', {}).get('data', [])
+                if data:
+                    item = data[0]
+                    # 转换为与原来接口类似的格式（f字段）
+                    snap = {
+                        'f58': item.get('SECURITY_NAME_ABBR', ''),  # 股票名称
+                        'f167': 0,  # 市盈率（该接口无此字段，后续从别处补充）
+                        'f116': item.get('TOTAL_OPERATE_INCOME', 0),  # 营业总收入代替总市值
+                        'f127': item.get('YSTZ', 0),  # 营收同比增速
+                        'f186': item.get('WEIGHTAVG_ROE', 0),  # 加权ROE
+                        'f114': item.get('SJLTZ', 0),  # 净利润同比
+                        'f117': item.get('XSMLL', 0),  # 毛利率
+                        # 额外保存原始数据供后续使用
+                        '_basic_eps': item.get('BASIC_EPS', 0),  # 每股收益
+                        '_bps': item.get('BPS', 0),  # 每股净资产
+                        '_industry': item.get('PUBLISHNAME', ''),  # 所属行业
+                    }
+            
+            # 公告扫描（该接口通常仍可用）
+            try:
+                r2 = requests.get(
+                    f"{settings.api.eastmoney_announcement_url}?sr=-1&page_size={settings.announcement_limit}&page_index=1&stock_list={code}",
+                    timeout=settings.api.request_timeout,
+                    headers=headers
+                )
+                if r2.status_code == 200:
+                    anns = r2.json().get('data', {}).get('list', []) or []
+            except Exception:
+                anns = []
             
             return snap, anns
-        except Exception:
+        except Exception as e:
+            print(f"fetch_risk_data error: {e}")
             return None, None
     
     def fetch_extra_details(self, code: str) -> Dict[str, Any]:
