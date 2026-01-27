@@ -31,7 +31,12 @@ datas += copy_metadata('pandas')
 datas += copy_metadata('numpy')
 datas += copy_metadata('requests')
 datas += copy_metadata('packaging')
-datas += copy_metadata('importlib_metadata', recursive=True)
+
+# importlib_metadata 可能不存在，安全处理
+try:
+    datas += copy_metadata('importlib_metadata', recursive=True)
+except Exception:
+    pass
 
 # 添加项目文件
 datas += [
