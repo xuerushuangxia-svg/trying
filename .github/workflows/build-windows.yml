@@ -32,10 +32,15 @@ jobs:
       run: |
         dir dist
     
+    - name: Rename exe for upload
+      run: |
+        move "dist\XUE风险穿透终端.exe" "dist\XUE-Risk-Terminal.exe"
+      shell: cmd
+    
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
-        name: XUE风险穿透终端-Windows
-        path: dist/XUE风险穿透终端.exe
+        name: XUE-Risk-Terminal-Windows
+        path: dist/XUE-Risk-Terminal.exe
         if-no-files-found: warn
         retention-days: 30
