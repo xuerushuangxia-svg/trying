@@ -294,5 +294,182 @@ class DataService:
         return out
 
 
+    def fetch_risk_warning_status(self, code: str) -> Dict[str, Any]:
+        """获取风险警示板块状态（类似通达信风险关注板块）- 详细版"""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://data.eastmoney.com/'
+        }
+        
+        # 定义需要检查的风险板块
+        RISK_BOARDS = {
+            'BK0511': {'name': '风险警示(ST/*ST)', 'level': 'critical', 'desc': '被实施风险警示，存在退市风险'},
+            'BK0617': {'name': '业绩预亏', 'level': 'high', 'desc': '业绩预告亏损，基本面恶化'},
+            'BK0596': {'name': '高质押率', 'level': 'medium', 'desc': '股权质押比例过高，存在平仓风险'},
+            'BK0638': {'name': '限售解禁', 'level': 'medium', 'desc': '近期有限售股解禁，存在减持压力'},
+            'BK0969': {'name': '股东减持', 'level': 'medium', 'desc': '重要股东减持，可能看空后市'},
+            'BK0815': {'name': 'ST摘帽', 'level': 'info', 'desc': '已摘帽或即将摘帽，关注基本面改善'},
+            'BK0677': {'name': '举牌概念', 'level': 'info', 'desc': '被举牌，关注后续动向'},
+        }
+        
+        result = {
+            'in_risk_board': False,           # 是否在风险警示板块(ST)
+            'risk_type': None,                # 风险类型：*ST、ST等
+            'risk_board_stocks': [],          # 风险板块股票列表
+            'risk_board_total': 0,            # 风险板块股票总数
+            'concept_boards': [],             # 所属概念板块
+            'has_risk_concept': False,        # 是否有风险概念
+            # 新增：详细风险标签
+            'risk_tags': [],                  # 风险标签列表
+            'risk_details': [],               # 风险详情列表
+            'critical_risks': [],             # 严重风险
+            'high_risks': [],                 # 高风险
+            'medium_risks': [],               # 中等风险
+            'info_risks': [],                 # 提示信息
+        }
+        
+        try:
+            # 1. 遍历检查所有风险板块
+            for board_code, board_info in RISK_BOARDS.items():
+                url = f'https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fid=f3&fs=b:{board_code}&fields=f12,f14'
+                try:
+                    r = requests.get(url, timeout=settings.api.request_timeout, headers=headers)
+                    if r.status_code == 200:
+                        data = r.json().get('data', {})
+                        diff = data.get('diff', []) if data else []
+                        
+                        # 检查目标股票是否在此板块
+                        for item in diff:
+                            if item.get('f12') == code:
+                                risk_tag = {
+                                    'board_code': board_code,
+                                    'board_name': board_info['name'],
+                                    'level': board_info['level'],
+                                    'desc': board_info['desc'],
+                                    'stock_name': item.get('f14', '')
+                                }
+                                result['risk_tags'].append(risk_tag)
+                                result['risk_details'].append(f"{board_info['name']}: {board_info['desc']}")
+                                
+                                # 按风险等级分类
+                                if board_info['level'] == 'critical':
+                                    result['critical_risks'].append(board_info['name'])
+                                    result['in_risk_board'] = True
+                                    name = item.get('f14', '')
+                                    if name.startswith('*ST'):
+                                        result['risk_type'] = '*ST（退市风险警示）'
+                                    elif name.startswith('ST'):
+                                        result['risk_type'] = 'ST（其他风险警示）'
+                                    else:
+                                        result['risk_type'] = '风险警示'
+                                elif board_info['level'] == 'high':
+                                    result['high_risks'].append(board_info['name'])
+                                elif board_info['level'] == 'medium':
+                                    result['medium_risks'].append(board_info['name'])
+                                else:
+                                    result['info_risks'].append(board_info['name'])
+                                break
+                        
+                        # 保存风险警示板块(ST)的股票列表
+                        if board_code == 'BK0511':
+                            result['risk_board_total'] = data.get('total', 0) if data else 0
+                            result['risk_board_stocks'] = diff[:20]
+                except Exception:
+                    continue
+            
+            # 2. 获取股票所属概念板块
+            em_code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+            url_concept = f'https://emweb.securities.eastmoney.com/PC_HSF10/CoreConception/PageAjax?code={em_code}'
+            r2 = requests.get(url_concept, timeout=settings.api.request_timeout, headers=headers)
+            if r2.status_code == 200:
+                data = r2.json()
+                ssbk = data.get('ssbk', [])
+                for item in ssbk:
+                    board_name = item.get('BOARD_NAME', '')
+                    result['concept_boards'].append(board_name)
+                    # 检查是否有风险相关概念
+                    risk_concepts = ['ST', '退市', '风险', '问题', '亏损', '警示', '质押', '减持']
+                    if any(rc in board_name for rc in risk_concepts):
+                        result['has_risk_concept'] = True
+        
+        except Exception as e:
+            print(f"fetch_risk_warning_status error: {e}")
+        
+        return result
+    
+    def fetch_regulatory_records(self, code: str) -> Dict[str, Any]:
+        """获取监管记录（触发监管功能）"""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://data.eastmoney.com/'
+        }
+        
+        result = {
+            'regulatory_announcements': [],  # 监管类公告
+            'regulatory_count': 0,           # 监管公告数量
+            'has_inquiry': False,            # 是否有问询函
+            'has_warning': False,            # 是否有警示函
+            'has_punishment': False,         # 是否有处罚
+            'has_rectification': False,      # 是否有整改
+            'latest_regulatory': None,       # 最近监管记录
+        }
+        
+        try:
+            # 获取监管类公告（ann_type=SZR 为监管类）
+            url = f'https://np-anotice-stock.eastmoney.com/api/security/ann?sr=-1&page_size=50&page_index=1&stock_list={code}&ann_type=SZR'
+            r = requests.get(url, timeout=settings.api.request_timeout, headers=headers)
+            if r.status_code == 200:
+                data = r.json()
+                items = data.get('data', {}).get('list', []) or []
+                result['regulatory_announcements'] = items
+                result['regulatory_count'] = len(items)
+                
+                if items:
+                    result['latest_regulatory'] = items[0]
+                
+                # 分析监管类型
+                for item in items:
+                    title = item.get('title', '')
+                    if '问询' in title or '关注函' in title:
+                        result['has_inquiry'] = True
+                    if '警示' in title or '监管措施' in title:
+                        result['has_warning'] = True
+                    if '处罚' in title or '处分' in title or '罚款' in title:
+                        result['has_punishment'] = True
+                    if '整改' in title or '责令' in title:
+                        result['has_rectification'] = True
+            
+            # 如果监管类公告为空，尝试从普通公告中筛选
+            if result['regulatory_count'] == 0:
+                url2 = f'{settings.api.eastmoney_announcement_url}?sr=-1&page_size=100&page_index=1&stock_list={code}'
+                r2 = requests.get(url2, timeout=settings.api.request_timeout, headers=headers)
+                if r2.status_code == 200:
+                    data2 = r2.json()
+                    all_items = data2.get('data', {}).get('list', []) or []
+                    # 筛选监管相关公告
+                    regulatory_keywords = ['问询', '关注函', '警示', '监管', '处罚', '整改', '责令', '违规', '立案']
+                    for item in all_items:
+                        title = item.get('title', '')
+                        if any(kw in title for kw in regulatory_keywords):
+                            result['regulatory_announcements'].append(item)
+                            if '问询' in title or '关注函' in title:
+                                result['has_inquiry'] = True
+                            if '警示' in title:
+                                result['has_warning'] = True
+                            if '处罚' in title or '处分' in title:
+                                result['has_punishment'] = True
+                            if '整改' in title or '责令' in title:
+                                result['has_rectification'] = True
+                    
+                    result['regulatory_count'] = len(result['regulatory_announcements'])
+                    if result['regulatory_announcements']:
+                        result['latest_regulatory'] = result['regulatory_announcements'][0]
+        
+        except Exception as e:
+            print(f"fetch_regulatory_records error: {e}")
+        
+        return result
+
+
 # 全局数据服务实例
 data_service = DataService()

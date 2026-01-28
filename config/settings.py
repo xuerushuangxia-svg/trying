@@ -19,7 +19,7 @@ class APIConfig:
     eastmoney_stock_list_url: str = "https://push2.eastmoney.com/api/qt/clist/get"
     eastmoney_stock_detail_url: str = "https://push2.eastmoney.com/api/qt/stock/get"
     eastmoney_announcement_url: str = "https://np-anotice-stock.eastmoney.com/api/security/ann"
-    request_timeout: int = 6
+    request_timeout: int = 10
     cache_ttl: int = 600  # 10 分钟
 
 

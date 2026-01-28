@@ -92,6 +92,127 @@ class UIComponents:
         </div>""", unsafe_allow_html=True)
     
     @staticmethod
+    def render_risk_board_card(assessment: RiskAssessment):
+        """渲染通达信风险关注板块卡片 - 详细版"""
+        status = assessment.risk_board_status
+        
+        # 构建风险标签HTML
+        risk_tags_html = ""
+        
+        # 严重风险（红色标签）
+        if assessment.critical_risks:
+            for risk in assessment.critical_risks:
+                risk_tags_html += f'<span style="background:#dc3545;color:white;padding:2px 8px;border-radius:3px;margin:2px;display:inline-block;font-size:12px;">🚨 {risk}</span>'
+        
+        # 高风险（橙色标签）
+        if assessment.high_risks:
+            for risk in assessment.high_risks:
+                risk_tags_html += f'<span style="background:#fd7e14;color:white;padding:2px 8px;border-radius:3px;margin:2px;display:inline-block;font-size:12px;">⚠️ {risk}</span>'
+        
+        # 中等风险（黄色标签）
+        if assessment.medium_risks:
+            for risk in assessment.medium_risks:
+                risk_tags_html += f'<span style="background:#ffc107;color:#333;padding:2px 8px;border-radius:3px;margin:2px;display:inline-block;font-size:12px;">⚡ {risk}</span>'
+        
+        # 提示信息（蓝色标签）
+        if assessment.info_risks:
+            for risk in assessment.info_risks:
+                risk_tags_html += f'<span style="background:#17a2b8;color:white;padding:2px 8px;border-radius:3px;margin:2px;display:inline-block;font-size:12px;">ℹ️ {risk}</span>'
+        
+        # 构建结论
+        if assessment.critical_risks:
+            conclusion = f"🚨 严重警告：该股被纳入【{', '.join(assessment.critical_risks)}】"
+            if assessment.risk_type:
+                conclusion += f"（{assessment.risk_type}）"
+            analysis = "风险警示板块股票交易受限，涨跌幅5%，随时面临退市，强烈建议规避！"
+        elif assessment.high_risks:
+            conclusion = f"⚠️ 高风险：检测到【{', '.join(assessment.high_risks)}】"
+            analysis = "公司基本面存在重大隐患，投资需极度谨慎。"
+        elif assessment.medium_risks:
+            conclusion = f"⚡ 中等风险：检测到【{', '.join(assessment.medium_risks)}】"
+            analysis = "存在资金面或股东层面的风险信号，需密切关注。"
+        elif assessment.info_risks:
+            conclusion = f"ℹ️ 关注提示：检测到【{', '.join(assessment.info_risks)}】"
+            analysis = "存在需要关注的事项，建议了解详情后决策。"
+        elif assessment.has_risk_concept:
+            conclusion = "检测到股票涉及风险相关概念板块，需警惕"
+            analysis = "虽未被正式纳入风险警示板，但所属板块存在潜在风险信号。"
+        else:
+            conclusion = "✅ 该股未检测到重大风险标签"
+            analysis = "股票交易正常，不在ST/*ST等风险警示名单中，未检测到业绩预亏、高质押等风险。"
+            risk_tags_html = '<span style="background:#28a745;color:white;padding:2px 8px;border-radius:3px;margin:2px;display:inline-block;font-size:12px;">✅ 暂无风险标签</span>'
+        
+        # 风险详情列表
+        details_html = ""
+        if assessment.risk_details:
+            details_html = "<br/><b>风险详情：</b><ul style='margin:5px 0;padding-left:20px;'>"
+            for detail in assessment.risk_details:
+                details_html += f"<li style='font-size:13px;'>{detail}</li>"
+            details_html += "</ul>"
+        
+        # 显示所属概念板块
+        boards_str = ""
+        if assessment.concept_boards:
+            boards_str = f"<br/><b>所属板块：</b>{', '.join(assessment.concept_boards[:6])}"
+            if len(assessment.concept_boards) > 6:
+                boards_str += f" 等{len(assessment.concept_boards)}个"
+        
+        st.markdown(f"""<div class="report-card {status}">
+            <div class="risk-title">📋 9. 风险关注板块（通达信风格）</div>
+            <div class="detail-text">
+                <span class="logic-tag">多维风险板块检测</span><br/>
+                <div style="margin:8px 0;">{risk_tags_html}</div>
+                <b>结论：</b>{conclusion}<br/>
+                <b>分析：</b>{analysis}{details_html}{boards_str}
+            </div>
+        </div>""", unsafe_allow_html=True)
+    
+    @staticmethod
+    def render_regulatory_card(assessment: RiskAssessment):
+        """渲染触发监管功能卡片"""
+        status = assessment.regulatory_status
+        
+        # 构建监管状态描述
+        regulatory_items = []
+        if assessment.has_inquiry:
+            regulatory_items.append("问询函/关注函")
+        if assessment.has_warning:
+            regulatory_items.append("警示函/监管措施")
+        if assessment.has_punishment:
+            regulatory_items.append("行政处罚")
+        if assessment.has_rectification:
+            regulatory_items.append("责令整改")
+        
+        if assessment.has_punishment:
+            conclusion = f"🚨 严重警告：该股曾受到监管处罚（{', '.join(regulatory_items)}）"
+            analysis = "存在行政处罚记录，说明公司治理存在重大缺陷，投资风险极高。"
+        elif regulatory_items:
+            conclusion = f"⚠️ 检测到监管记录：{', '.join(regulatory_items)}"
+            analysis = "公司曾被交易所关注，需仔细阅读相关公告了解具体问题。"
+        elif assessment.regulatory_count > 0:
+            conclusion = f"发现 {assessment.regulatory_count} 条监管相关公告"
+            analysis = "建议详细查阅公告内容，了解监管关注点。"
+        else:
+            conclusion = "✅ 近期未发现监管问询或处罚记录"
+            analysis = "公司合规状态良好，未触发交易所监管措施。"
+        
+        # 显示最新监管公告
+        latest_str = ""
+        if assessment.regulatory_announcements and len(assessment.regulatory_announcements) > 0:
+            latest = assessment.regulatory_announcements[0]
+            title = latest.get('title', '')[:40]
+            latest_str = f"<br/><b>最新监管公告：</b>{title}..."
+        
+        st.markdown(f"""<div class="report-card {status}">
+            <div class="risk-title">🔔 10. 触发监管记录</div>
+            <div class="detail-text">
+                <span class="logic-tag">监管措施追踪</span><br/>
+                <b>结论：</b>{conclusion}<br/>
+                <b>分析：</b>{analysis}{latest_str}
+            </div>
+        </div>""", unsafe_allow_html=True)
+    
+    @staticmethod
     def render_company_info(comp: Optional[pd.DataFrame], snap: Dict[str, Any]):
         """渲染企业基本信息"""
         with st.expander("企业基本信息与主营（点击展开）", expanded=True):

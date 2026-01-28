@@ -1,0 +1,113 @@
+name: Build App (macOS & Windows)
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build macOS app
+      run: |
+        pyinstaller build.spec --noconfirm
+    
+    - name: List dist contents
+      run: |
+        ls -la dist/
+    
+    - name: Create DMG
+      run: |
+        # 创建 DMG 文件便于分发
+        hdiutil create -volname "XUE风险穿透终端" -srcfolder "dist/XUE风险穿透终端.app" -ov -format UDZO "dist/XUE风险穿透终端-macOS.dmg"
+    
+    - name: Upload macOS artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: XUE-Risk-Terminal-macOS
+        path: |
+          dist/XUE风险穿透终端-macOS.dmg
+        if-no-files-found: warn
+        retention-days: 30
+
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build Windows executable
+      run: |
+        pyinstaller build.spec --noconfirm
+    
+    - name: List dist contents
+      run: |
+        dir dist
+    
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: XUE-Risk-Terminal-Windows
+        path: dist/XUE风险穿透终端.exe
+        if-no-files-found: warn
+        retention-days: 30
+
+  # 创建 Release（仅当有 tag 时）
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download macOS artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: XUE-Risk-Terminal-macOS
+        path: ./artifacts/macos
+    
+    - name: Download Windows artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: XUE-Risk-Terminal-Windows
+        path: ./artifacts/windows
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ./artifacts/macos/XUE风险穿透终端-macOS.dmg
+          ./artifacts/windows/XUE风险穿透终端.exe
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

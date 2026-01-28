@@ -51,6 +51,10 @@ def render_risk_report(target_code: str, index_df):
     snap, anns = data_service.fetch_risk_data(target_code)
     extras = data_service.fetch_extra_details(target_code)
     
+    # 获取通达信风险板块状态和监管记录
+    risk_warning = data_service.fetch_risk_warning_status(target_code)
+    regulatory = data_service.fetch_regulatory_records(target_code)
+    
     if not snap:
         st.error("🚨 信号解调失败：物理链路由于网络环境限制而阻塞。请检查东方财富网是否可以正常打开。")
         return
@@ -58,6 +62,28 @@ def render_risk_report(target_code: str, index_df):
     # 分析风险
     anns = anns or []
     assessment = risk_analyzer.analyze(snap, anns)
+    
+    # 填充风险板块和监管数据到评估结果
+    assessment.in_risk_board = risk_warning.get('in_risk_board', False)
+    assessment.risk_type = risk_warning.get('risk_type')
+    assessment.concept_boards = risk_warning.get('concept_boards', [])
+    assessment.has_risk_concept = risk_warning.get('has_risk_concept', False)
+    
+    # 新增：详细风险标签
+    assessment.risk_tags = risk_warning.get('risk_tags', [])
+    assessment.risk_details = risk_warning.get('risk_details', [])
+    assessment.critical_risks = risk_warning.get('critical_risks', [])
+    assessment.high_risks = risk_warning.get('high_risks', [])
+    assessment.medium_risks = risk_warning.get('medium_risks', [])
+    assessment.info_risks = risk_warning.get('info_risks', [])
+    
+    assessment.regulatory_count = regulatory.get('regulatory_count', 0)
+    assessment.has_inquiry = regulatory.get('has_inquiry', False)
+    assessment.has_warning = regulatory.get('has_warning', False)
+    assessment.has_punishment = regulatory.get('has_punishment', False)
+    assessment.has_rectification = regulatory.get('has_rectification', False)
+    assessment.regulatory_announcements = regulatory.get('regulatory_announcements', [])
+    
     ann_text = "".join([a.get('title', '') for a in anns if isinstance(a, dict)])
     
     # 渲染标题
@@ -77,6 +103,13 @@ def render_risk_report(target_code: str, index_df):
         UIComponents.render_valuation_card(assessment)
     with c4:
         UIComponents.render_financing_card(assessment)
+    
+    # 第三排：通达信风险关注板块与触发监管
+    c5, c6 = st.columns(2)
+    with c5:
+        UIComponents.render_risk_board_card(assessment)
+    with c6:
+        UIComponents.render_regulatory_card(assessment)
     
     # 企业背景部分
     st.markdown("---")

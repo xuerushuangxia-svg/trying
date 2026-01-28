@@ -22,11 +22,75 @@ class RiskAssessment:
     pe_value: Optional[float] = None
     market_value: Optional[float] = None
     
+    # 通达信风险关注板块相关
+    in_risk_board: bool = False          # 是否在风险警示板块
+    risk_type: Optional[str] = None      # 风险类型
+    concept_boards: List[str] = None     # 所属概念板块
+    has_risk_concept: bool = False       # 是否有风险概念
+    
+    # 新增：详细风险标签
+    risk_tags: List[Dict] = None         # 风险标签列表
+    risk_details: List[str] = None       # 风险详情列表
+    critical_risks: List[str] = None     # 严重风险（ST/*ST）
+    high_risks: List[str] = None         # 高风险（业绩预亏等）
+    medium_risks: List[str] = None       # 中等风险（质押、解禁等）
+    info_risks: List[str] = None         # 提示信息
+    
+    # 触发监管相关
+    regulatory_count: int = 0            # 监管公告数量
+    has_inquiry: bool = False            # 是否有问询函
+    has_warning: bool = False            # 是否有警示函
+    has_punishment: bool = False         # 是否有处罚
+    has_rectification: bool = False      # 是否有整改
+    regulatory_announcements: List[Dict] = None  # 监管公告列表
+    
+    def __post_init__(self):
+        if self.concept_boards is None:
+            self.concept_boards = []
+        if self.regulatory_announcements is None:
+            self.regulatory_announcements = []
+        if self.risk_tags is None:
+            self.risk_tags = []
+        if self.risk_details is None:
+            self.risk_details = []
+        if self.critical_risks is None:
+            self.critical_risks = []
+        if self.high_risks is None:
+            self.high_risks = []
+        if self.medium_risks is None:
+            self.medium_risks = []
+        if self.info_risks is None:
+            self.info_risks = []
+    
     @property
     def legal_status(self) -> str:
         if self.has_legal_risk:
             return "status-red"
         elif self.has_regulatory_risk:
+            return "status-yellow"
+        return "status-green"
+    
+    @property
+    def risk_board_status(self) -> str:
+        """风险关注板块状态"""
+        if self.critical_risks or self.in_risk_board:
+            return "status-red"
+        elif self.high_risks:
+            return "status-red"
+        elif self.medium_risks or self.has_risk_concept:
+            return "status-yellow"
+        elif self.info_risks:
+            return "status-yellow"
+        return "status-green"
+    
+    @property
+    def regulatory_status(self) -> str:
+        """触发监管状态"""
+        if self.has_punishment:
+            return "status-red"
+        elif self.has_inquiry or self.has_warning or self.has_rectification:
+            return "status-yellow"
+        elif self.regulatory_count > 0:
             return "status-yellow"
         return "status-green"
     
